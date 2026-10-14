@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -121,6 +122,11 @@ button:disabled { opacity: .4; cursor: not-allowed; }
 }
 #upgradeChoices button { min-height: 90px; }
 .small { font-size: 12px; color: #8ca9c1; }
+.cooldown-line { margin-top: 8px; font-size: 11px; letter-spacing: .5px; color: #dceaf5; text-shadow: none; }
+.cooldown-line span { float: right; color: var(--cyan); font-weight: bold; }
+.cooldown-bar { height: 5px; margin-top: 4px; background: #202a35; overflow: hidden; }
+.cooldown-bar div { height: 100%; width: 100%; background: linear-gradient(90deg,#00a8ff,#00f6ff); transition: width .08s linear; }
+.cooldown-bar.glitch-bar div { background: linear-gradient(90deg,#a855ff,#ff287f); }
 #toast {
   position: fixed;
   top: 105px;
@@ -186,7 +192,9 @@ button:disabled { opacity: .4; cursor: not-allowed; }
     <div id="modeText">SURVIVAL MODE</div>
     <div class="small">WASD: Move</div>
     <div class="small">Mouse / SPACE: Fire</div>
-    <div class="small">SHIFT: Dash · P: Pause</div>
+    <div class="small">SHIFT: Dash · E: Laser · Q: Glitch · P: Pause</div><button id="soundBtn" type="button">🔊 SOUND: ON</button>
+    <div class="cooldown-line">⚡ LASER <span id="laserCooldownText">READY</span><div class="cooldown-bar"><div id="laserCooldownFill"></div></div></div>
+    <div class="cooldown-line">▧ GLITCH <span id="glitchCooldownText">READY</span><div class="cooldown-bar glitch-bar"><div id="glitchCooldownFill"></div></div></div>
   </div>
 </div>
 
@@ -202,8 +210,8 @@ button:disabled { opacity: .4; cursor: not-allowed; }
     <p>DIFFICULTY: <select id="difficultySelect" style="background:#071b2b;color:#00f6ff;border:1px solid #00f6ff;padding:9px;font: bold 14px Consolas"><option value="easy">EASY</option><option value="normal" selected>NORMAL</option><option value="hard">HARD</option></select></p>
     <div id="recordPanel" class="record-panel">BEST WAVE <b id="bestWaveText">1</b> &nbsp;·&nbsp; HIGH SCORE <b id="bestScoreText">0</b></div>
     <p class="small">Progress saves automatically on this device: gold, skins, high score, and best wave.</p>
-    <p class="small">Earn gold by clearing waves. Boss waves pay extra.</p>
-    <p class="small">WASD / ARROWS: Move<br>Mouse: Aim · Click / Space: Shoot<br>SHIFT: Dash · P / ESC: Pause</p>
+    <p class="small">Earn gold by clearing waves, defeating enemies, and collecting salvage. Wave rewards are boosted; boss waves pay extra.</p>
+    <p class="small">WASD / ARROWS: Move around the huge alien map<br>Mouse: Aim · Click / Space: Shoot<br>SHIFT: Dash · E: Laser Beam · Q: Glitch Pulse · P / ESC: Pause</p>
   </div>
 </div>
 
@@ -286,6 +294,20 @@ let particles = [];
 let orbs = [];
 let wrenches = [];
 let stars = [];
+// Large explorable arena; camera follows the ship through the world.
+const WORLD = { width: 5200, height: 5200 };
+let cameraX = 0, cameraY = 0;
+let laserCooldown = 0, glitchCooldown = 0;
+let laserFlash = 0, glitchFlash = 0;
+let glitchSlowTimer = 0;
+let lightningLevel = 0, acidRainLevel = 0;
+let chainLightningLevel = 0, orbitDroneLevel = 0, novaLevel = 0, mineLevel = 0;
+let critLevel = 0, lifestealLevel = 0, frostLevel = 0, meteorLevel = 0;
+let sonicLevel = 0, shieldLevel = 0, blackholeLevel = 0, ricochetLevel = 0;
+let soundEnabled = true, audioCtx = null;
+let lightningTimer = 0, acidRainTimer = 0, acidTick = 0;
+let acidDrops = [];
+let mapStructures = [];
 
 let score = 0;
 let kills = 0;
@@ -327,6 +349,21 @@ try { const saved = JSON.parse(localStorage.getItem("voidbreakEconomy") || "null
 function saveEconomy(){ try { localStorage.setItem("voidbreakEconomy", JSON.stringify(economy)); } catch(e) {} updateGoldUI(); }
 function updateGoldUI(){ if($("goldText")) $("goldText").textContent=economy.gold.toLocaleString(); if($("shopGold")) $("shopGold").textContent="◆ "+economy.gold.toLocaleString()+" GOLD"; }
 function addGold(amount, reason){ economy.gold += amount; saveEconomy(); showToast("+"+amount+" GOLD · "+reason); }
+function playSound(kind="shot") {
+  if (!soundEnabled) return;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    if (!audioCtx) audioCtx = new AC();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    const now = audioCtx.currentTime, osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+    const presets = {shot:[520,180,.055,"square"], laser:[180,65,.25,"sawtooth"], glitch:[120,620,.32,"sawtooth"], lightning:[90,40,.22,"triangle"], acid:[260,90,.12,"sine"], pickup:[620,980,.12,"sine"], level:[330,880,.25,"triangle"], hurt:[130,55,.2,"square"]};
+    const q = presets[kind] || presets.shot;
+    osc.type=q[3]; osc.frequency.setValueAtTime(q[0],now); osc.frequency.exponentialRampToValueAtTime(Math.max(30,q[1]),now+q[2]);
+    gain.gain.setValueAtTime(.0001,now); gain.gain.exponentialRampToValueAtTime(kind==="shot"?.025:.07,now+.012); gain.gain.exponentialRampToValueAtTime(.0001,now+q[2]);
+    osc.connect(gain); gain.connect(audioCtx.destination); osc.start(now); osc.stop(now+q[2]+.02);
+  } catch(e) {}
+}
 function renderShop(){ updateGoldUI(); const grid=$("skinGrid"); grid.innerHTML=""; skinCatalog.forEach(skin=>{ const owned=economy.unlocked.includes(skin.id), equipped=economy.equipped===skin.id; const card=document.createElement("div"); card.className="skin"; card.innerHTML=`<div class="shipPreview" style="background:${skin.color};color:${skin.color}"></div><strong>${skin.name}</strong><div class="small">${skin.desc}</div><div style="color:var(--gold);margin:8px 0">${skin.price===0?"FREE":"◆ "+skin.price}</div><button>${equipped?"EQUIPPED":owned?"EQUIP": "UNLOCK"}</button>`; const btn=card.querySelector("button"); btn.disabled=equipped; btn.onclick=()=>{ if(owned){economy.equipped=skin.id;saveEconomy();renderShop();showToast(skin.name+" EQUIPPED");} else if(economy.gold>=skin.price){economy.gold-=skin.price;economy.unlocked.push(skin.id);economy.equipped=skin.id;saveEconomy();renderShop();showToast(skin.name+" UNLOCKED!");} else {showToast("NEED "+(skin.price-economy.gold)+" MORE GOLD");} }; grid.appendChild(card); }); }
 function openShop(fromPause=false){ renderShop(); $("shopScreen").classList.remove("hidden"); if(state==="playing") state="shop"; $("pauseScreen").classList.add("hidden"); $("titleScreen").classList.add("hidden"); $("hud").classList.add("hidden"); }
 function closeShop(){ $("shopScreen").classList.add("hidden"); if(state==="shop"){state="title";$("titleScreen").classList.remove("hidden");} else {$("titleScreen").classList.remove("hidden");} }
@@ -385,13 +422,49 @@ const upgradeList = [
     name: "FIELD REPAIR",
     description: "Restore 35 hull points",
     apply: () => player.health = Math.min(player.maxHealth, player.health + 35)
-  }
+  },
+  {
+    name: "THUNDER GOD",
+    description: "Lightning strikes nearby enemies every 2.4 seconds. Each level adds a bolt.",
+    apply: () => { lightningLevel = Math.min(4, lightningLevel + 1); lightningTimer = 0; }
+  },
+  {
+    name: "ACID RAIN",
+    description: "Corrosive drops rain around you, damaging enemies over time. Upgrade to intensify the storm.",
+    apply: () => { acidRainLevel = Math.min(4, acidRainLevel + 1); acidRainTimer = 0; }
+  },
+  {
+    name: "VOID NOVA",
+    description: "Glitch pulse hits harder and slows enemies for longer.",
+    apply: () => { upgrades.damage *= 1.12; glitchSlowTimer = Math.max(glitchSlowTimer, 1); }
+  },
+  {
+    name: "PHASE LANCE",
+    description: "Laser beam deals 50% more damage and reaches farther.",
+    apply: () => { upgrades.damage *= 1.18; }
+  },
+  { name:"CHAIN LIGHTNING", description:"Every Thunder God strike jumps to another enemy.", apply:()=>{chainLightningLevel=Math.min(4,chainLightningLevel+1);lightningLevel=Math.max(1,lightningLevel);} },
+  { name:"ORBITAL DRONES", description:"Tiny defense drones orbit you and zap nearby enemies.", apply:()=>{orbitDroneLevel=Math.min(4,orbitDroneLevel+1);} },
+  { name:"VOID NOVA CORE", description:"Glitch pulse gains a larger blast radius and extra damage.", apply:()=>{novaLevel=Math.min(4,novaLevel+1);upgrades.damage*=1.08;} },
+  { name:"GRAVITY WELL", description:"Enemies near you are pulled together and slowed.", apply:()=>{blackholeLevel=Math.min(3,blackholeLevel+1);} },
+  { name:"METEOR STRIKE", description:"Periodic meteors crash into enemy clusters.", apply:()=>{meteorLevel=Math.min(4,meteorLevel+1);} },
+  { name:"CRYO BURST", description:"Shots chill enemies, reducing their movement speed.", apply:()=>{frostLevel=Math.min(4,frostLevel+1);} },
+  { name:"SALVAGE PROTOCOL", description:"Enemies drop more gold; wave rewards increase.", apply:()=>{upgrades.goldBonus=(upgrades.goldBonus||0)+.5;} },
+  { name:"NANITE LEECH", description:"Restore a little hull whenever you defeat an enemy.", apply:()=>{lifestealLevel=Math.min(5,lifestealLevel+1);} },
+  { name:"CRITICAL OVERLOAD", description:"A chance for shots to deal triple damage.", apply:()=>{critLevel=Math.min(5,critLevel+1);} },
+  { name:"BOUNCING BOLTS", description:"Your bullets ricochet damage into nearby enemies on impact.", apply:()=>{ricochetLevel=Math.min(4,ricochetLevel+1);} },
+  { name:"SONIC RUPTURE", description:"A periodic sonic ring damages enemies around you.", apply:()=>{sonicLevel=Math.min(4,sonicLevel+1);} },
+  { name:"AEGIS SHIELD", description:"Gain a shield charge that absorbs one hit, then recharges.", apply:()=>{shieldLevel=Math.min(4,shieldLevel+1);player.shieldCharges=shieldLevel;} },
+  { name:"ACID CATALYST", description:"Acid rain spreads wider and melts enemies faster.", apply:()=>{acidRainLevel=Math.min(4,acidRainLevel+1);acidRainTimer=0;} },
+  { name:"THUNDERSTORM", description:"More frequent lightning with extra chain jumps.", apply:()=>{lightningLevel=Math.min(4,lightningLevel+1);chainLightningLevel=Math.min(4,chainLightningLevel+1);lightningTimer=0;} },
+  { name:"MINEFIELD", description:"Deploy explosive mines around your ship that damage nearby enemies.", apply:()=>{mineLevel=Math.min(4,mineLevel+1);} },
+  { name:"GOLD RUSH", description:"Instantly collect a gold bonus and increase future wave payouts.", apply:()=>{upgrades.goldBonus=(upgrades.goldBonus||0)+.25;addGold(35+wave*5,"GOLD RUSH");} }
 ];
 
 function makePlayer() {
   return {
-    x: W / 2,
-    y: H / 2,
+    x: WORLD.width / 2,
+    y: WORLD.height / 2,
     radius: 13,
     speed: 250,
     health: upgrades.maxHealth,
@@ -414,6 +487,18 @@ function resetGame() {
   shake = 0;
   dashCooldown = 0;
   bossSpawned = false;
+  laserCooldown = 0; glitchCooldown = 0; laserFlash = 0; glitchFlash = 0; glitchSlowTimer = 0;
+  lightningLevel = 0; acidRainLevel = 0; lightningTimer = 0; acidRainTimer = 0; acidTick = 0; acidDrops = [];
+  chainLightningLevel=0; orbitDroneLevel=0; novaLevel=0; mineLevel=0; critLevel=0; lifestealLevel=0; frostLevel=0; meteorLevel=0; sonicLevel=0; shieldLevel=0; blackholeLevel=0; ricochetLevel=0;
+  cameraX = Math.max(0, WORLD.width/2-W/2); cameraY = Math.max(0, WORLD.height/2-H/2);
+  if (!mapStructures.length) {
+    mapStructures = [];
+    for (let i=0;i<95;i++) {
+      const x=180+Math.random()*(WORLD.width-360), y=180+Math.random()*(WORLD.height-360);
+      const r=18+Math.random()*65;
+      mapStructures.push({x,y,r,type:Math.random()<.55?'ruin':'crater',hue:Math.random()<.5?'cyan':'purple',rot:Math.random()*6.28});
+    }
+  }
   infiniteLevel = false;
   invincible = false;
   digitBuffer = "";
@@ -487,6 +572,14 @@ function updateHUD() {
   $("modeText").textContent = infiniteLevel
     ? "INFINITE MODE"
     : invincible ? "GOD MODE" : "SURVIVAL MODE";
+  const setCooldown = (textId, fillId, remaining, total) => {
+    const ready = remaining <= 0;
+    $(textId).textContent = ready ? "READY" : remaining.toFixed(1) + "s";
+    $(fillId).style.width = (ready ? 100 : Math.max(0, (1 - remaining / total) * 100)) + "%";
+    $(textId).style.color = ready ? "#67ff9a" : "#ffd166";
+  };
+  setCooldown("laserCooldownText", "laserCooldownFill", laserCooldown, 8);
+  setCooldown("glitchCooldownText", "glitchCooldownFill", glitchCooldown, 12);
 }
 
 function togglePause() {
@@ -554,6 +647,7 @@ function gainXP(amount) {
   updateHUD();
 
   if (leveled) {
+    playSound("level");
     showToast("LEVEL " + level + " REACHED");
     openUpgrade();
   }
@@ -693,8 +787,23 @@ canvas.addEventListener("mousemove", e => {
   mouse.y = e.clientY - rect.top;
 });
 
-canvas.addEventListener("mousedown", () => mouse.down = true);
+canvas.addEventListener("mousedown", e => {
+  if (e.button !== 0) return;
+  mouse.down = true;
+  // Fire immediately on click instead of waiting for the next animation tick.
+  if (state === "playing") shoot();
+});
+canvas.addEventListener("pointerdown", e => {
+  if (e.pointerType === "touch") {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - rect.left;
+    mouse.y = e.clientY - rect.top;
+    mouse.down = true;
+    if (state === "playing") shoot();
+  }
+});
 addEventListener("mouseup", () => mouse.down = false);
+addEventListener("pointerup", () => mouse.down = false);
 canvas.addEventListener("contextmenu", e => e.preventDefault());
 
 $("devRunBtn").onclick = () => {
@@ -707,6 +816,7 @@ $("devInput").addEventListener("keydown", e => {
 $("devCloseBtn").onclick = () => $("devPanel").classList.add("hidden");
 
 $("startBtn").onclick = startGame;
+if($("soundBtn")) $("soundBtn").onclick=()=>{soundEnabled=!soundEnabled;$("soundBtn").textContent=soundEnabled?"🔊 SOUND: ON":"🔇 SOUND: OFF";if(soundEnabled)playSound("pickup");};
 $("shopOpenBtn").onclick = () => openShop();
 $("shopOverBtn").onclick = () => openShop();
 $("difficultySelect").addEventListener("change", e => { difficulty=e.target.value; try{localStorage.setItem("voidbreakDifficulty",difficulty)}catch(err){} });
@@ -735,17 +845,14 @@ $("titleOverBtn").onclick = () => {
 // ==========================================
 
 function spawnEnemy() {
-  // The crowd grows steadily with each wave, then levels off to keep the screen fair.
+  // Enemies spawn around the player in the explorable world, not at screen edges.
   const waveCrowd = 12 + Math.min(18, Math.floor((wave - 1) * 0.8));
   if (enemies.length >= Math.round(waveCrowd * difficultySettings[difficulty].spawn)) return;
 
-  const side = Math.floor(Math.random() * 4);
-  let x, y;
-
-  if (side === 0) { x = Math.random() * W; y = -30; }
-  if (side === 1) { x = W + 30; y = Math.random() * H; }
-  if (side === 2) { x = Math.random() * W; y = H + 30; }
-  if (side === 3) { x = -30; y = Math.random() * H; }
+  const angle = Math.random()*Math.PI*2;
+  const distance = Math.max(W,H)*(.58+Math.random()*.28);
+  const x = Math.max(25,Math.min(WORLD.width-25,player.x+Math.cos(angle)*distance));
+  const y = Math.max(25,Math.min(WORLD.height-25,player.y+Math.sin(angle)*distance));
 
   const roll = Math.random();
   let type = "chaser";
@@ -778,8 +885,8 @@ function spawnEnemy() {
 
 function spawnBoss() {
   enemies.push({
-    x: W / 2,
-    y: -65,
+    x: Math.max(100,Math.min(WORLD.width-100,player.x+Math.cos(Math.random()*6.28)*520)),
+    y: Math.max(100,Math.min(WORLD.height-100,player.y+Math.sin(Math.random()*6.28)*520)),
     type: "boss",
     radius: 34,
     hp: (80 + wave * 18) * difficultySettings[difficulty].enemyHp,
@@ -828,12 +935,49 @@ function burst(x, y, color, count = 8) {
 // COMBAT
 // ==========================================
 
+function activateLaser() {
+  playSound("laser");
+  laserCooldown = 8;
+  laserFlash = .32;
+  const a = player.angle, reach = 900, width = 30;
+  let hits = 0;
+  for (let i=enemies.length-1;i>=0;i--) {
+    const e=enemies[i], dx=e.x-player.x, dy=e.y-player.y;
+    const along=dx*Math.cos(a)+dy*Math.sin(a);
+    const across=Math.abs(-dx*Math.sin(a)+dy*Math.cos(a));
+    if (along>0 && along<reach && across<width+e.radius) {
+      e.hp -= 22*upgrades.damage; hits++;
+      burst(e.x,e.y,"#7df9ff",8);
+      if(e.hp<=0) killEnemy(i);
+    }
+  }
+  showToast(hits ? "LASER BEAM · "+hits+" TARGETS HIT" : "LASER BEAM FIRED");
+}
+
+function activateGlitch() {
+  playSound("glitch");
+  glitchCooldown = 12;
+  glitchFlash = .7;
+  glitchSlowTimer = 3.5;
+  let hits=0;
+  for(let i=enemies.length-1;i>=0;i--) {
+    const e=enemies[i];
+    if(Math.hypot(e.x-player.x,e.y-player.y)<420) {
+      e.hp -= 9*upgrades.damage; hits++;
+      burst(e.x,e.y,Math.random()<.5?"#a855ff":"#00f6ff",7);
+      if(e.hp<=0) killEnemy(i);
+    }
+  }
+  showToast("GLITCH PULSE · ENEMIES CORRUPTED");
+}
+
 function shoot() {
   if (player.fireTimer > 0) return;
+  playSound("shot");
 
   player.fireTimer = .22 / upgrades.rate;
 
-  const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+  const angle = Math.atan2(mouse.y + cameraY - player.y, mouse.x + cameraX - player.x);
   player.angle = angle;
 
   const count = infiniteLevel ? 5 : upgrades.multishot;
@@ -849,7 +993,7 @@ function shoot() {
       vx: Math.cos(a) * 600,
       vy: Math.sin(a) * 600,
       radius: 4,
-      damage: upgrades.damage * (infiniteLevel ? 5 : 1),
+      damage: upgrades.damage * (infiniteLevel ? 5 : 1) * (Math.random()<critLevel*.045?3:1),
       life: 1.2
     });
   }
@@ -857,6 +1001,8 @@ function shoot() {
 
 function damagePlayer(amount) {
   if (invincible || infiniteLevel || player.dashTime > 0) return;
+  if (player.shieldCharges > 0) { player.shieldCharges--; playSound("pickup"); burst(player.x,player.y,"#7df9ff",18); showToast("AEGIS SHIELD ABSORBED HIT"); return; }
+  playSound("hurt");
 
   player.health -= amount;
   shake = 7;
@@ -873,6 +1019,8 @@ function killEnemy(index) {
   const enemy = enemies[index];
 
   burst(enemy.x, enemy.y, enemy.color, enemy.type === "boss" ? 28 : 10);
+  if(lifestealLevel>0) player.health=Math.min(player.maxHealth,player.health+lifestealLevel*.7);
+  if(Math.random()<.16) addGold(1+Math.floor((upgrades.goldBonus||0)*2),"SALVAGE");
   score += enemy.value;
   kills++;
 
@@ -918,10 +1066,48 @@ function update(dt) {
 
   player.x += mx / length * speed * dt;
   player.y += my / length * speed * dt;
-  player.x = Math.max(player.radius, Math.min(W - player.radius, player.x));
-  player.y = Math.max(player.radius, Math.min(H - player.radius, player.y));
+  player.x = Math.max(player.radius, Math.min(WORLD.width - player.radius, player.x));
+  player.y = Math.max(player.radius, Math.min(WORLD.height - player.radius, player.y));
+  cameraX = Math.max(0, Math.min(WORLD.width-W, player.x-W/2));
+  cameraY = Math.max(0, Math.min(WORLD.height-H, player.y-H/2));
 
-  player.angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+  player.angle = Math.atan2(mouse.y + cameraY - player.y, mouse.x + cameraX - player.x);
+  laserCooldown = Math.max(0, laserCooldown-dt);
+  glitchCooldown = Math.max(0, glitchCooldown-dt);
+  laserFlash = Math.max(0, laserFlash-dt);
+  glitchFlash = Math.max(0, glitchFlash-dt);
+  glitchSlowTimer = Math.max(0, glitchSlowTimer-dt);
+  lightningTimer -= dt;
+  acidRainTimer -= dt;
+  acidTick -= dt;
+  if (lightningLevel > 0 && lightningTimer <= 0 && enemies.length) {
+    lightningTimer = Math.max(0.65, 2.4 - lightningLevel * .28);
+    const targets = [...enemies].sort((a,b)=>Math.hypot(a.x-player.x,a.y-player.y)-Math.hypot(b.x-player.x,b.y-player.y)).slice(0, lightningLevel);
+    targets.forEach((e, idx) => {
+      e.hp -= 18 + lightningLevel * 10;
+      burst(e.x, e.y, "#b9e8ff", 12);
+      particles.push({x:e.x,y:e.y,life:.22,maxLife:.22,size:4,color:"#ffffff",bolt:true,fromX:player.x+idx*7,fromY:player.y});
+      if(e.hp<=0) killEnemy(e);
+    });
+    playSound("lightning");
+    if(chainLightningLevel>0 && targets.length){ targets.forEach(t=>{ const nearby=enemies.filter(e=>e!==t && Math.hypot(e.x-t.x,e.y-t.y)<180).slice(0,chainLightningLevel); nearby.forEach(e=>{e.hp-=12+chainLightningLevel*7;burst(e.x,e.y,"#b9e8ff",5);}); }); }
+    showToast("⚡ THUNDER GOD");
+  }
+  if (acidRainLevel > 0 && acidRainTimer <= 0) {
+    acidRainTimer = .22;
+    if(Math.random()<.08) playSound("acid");
+    for(let i=0;i<2+acidRainLevel*2;i++) acidDrops.push({x:player.x+(Math.random()-.5)*620,y:player.y+(Math.random()-.5)*420,life:.65,damage:4+acidRainLevel*3});
+  }
+  acidDrops.forEach(d=>{ d.life-=dt; if(d.life>0){ enemies.forEach(e=>{ if(Math.hypot(e.x-d.x,e.y-d.y)<28){e.hp-=d.damage*dt*3;}}); } });
+  acidDrops=acidDrops.filter(d=>d.life>0);
+  // Extra survivor powers: orbital drones, gravity, mines, meteors, sonic rings.
+  if(orbitDroneLevel>0){ enemies.forEach(e=>{ const d=Math.hypot(e.x-player.x,e.y-player.y); if(d<115+orbitDroneLevel*18 && Math.random()<dt*(1.3+orbitDroneLevel*.55)){e.hp-=5+orbitDroneLevel*4;burst(e.x,e.y,"#00f6ff",3);}}); }
+  if(blackholeLevel>0){ enemies.forEach(e=>{const dx=player.x-e.x,dy=player.y-e.y,d=Math.hypot(dx,dy);if(d<240){e.x+=dx/d*(18+blackholeLevel*10)*dt;e.y+=dy/d*(18+blackholeLevel*10)*dt;}}); }
+  if(meteorLevel>0 && Math.random()<dt*(.22+meteorLevel*.12) && enemies.length){const target=enemies[Math.floor(Math.random()*enemies.length)];const mx=target.x+(Math.random()-.5)*80,my=target.y+(Math.random()-.5)*80;burst(mx,my,"#ff8b48",12);enemies.forEach(e=>{if(Math.hypot(e.x-mx,e.y-my)<85+meteorLevel*12)e.hp-=14+meteorLevel*10;});playSound("lightning");}
+  if(sonicLevel>0 && Math.random()<dt*(.16+sonicLevel*.07)){enemies.forEach(e=>{if(Math.hypot(e.x-player.x,e.y-player.y)<150+sonicLevel*25)e.hp-=7+sonicLevel*5;});burst(player.x,player.y,"#b8f7ff",18);}
+  if(mineLevel>0 && Math.random()<dt*(.14+mineLevel*.08)){const mx=player.x+(Math.random()-.5)*300,my=player.y+(Math.random()-.5)*300;enemies.forEach(e=>{if(Math.hypot(e.x-mx,e.y-my)<55+mineLevel*12)e.hp-=18+mineLevel*10;});burst(mx,my,"#ffb52e",10);}
+  if (keys["e"] && laserCooldown<=0) activateLaser();
+  if (keys["q"] && glitchCooldown<=0) activateGlitch();
 
   if ((keys["shift"] || keys["shiftleft"] || keys["shiftright"]) &&
       dashCooldown <= 0) {
@@ -950,9 +1136,11 @@ function update(dt) {
     b.y += b.vy * dt;
     b.life -= dt;
   });
+  // Bullets use WORLD coordinates, not screen coordinates. Keep them alive
+  // across the scrolling lunar map; the old W/H check deleted most shots.
   bullets = bullets.filter(b =>
-    b.life > 0 && b.x > -30 && b.x < W + 30 &&
-    b.y > -30 && b.y < H + 30
+    b.life > 0 && b.x > -30 && b.x < WORLD.width + 30 &&
+    b.y > -30 && b.y < WORLD.height + 30
   );
 
   enemyBullets.forEach(b => {
@@ -979,8 +1167,12 @@ function update(dt) {
       moveAngle += Math.PI;
     }
 
-    e.x += Math.cos(moveAngle) * e.speed * dt;
-    e.y += Math.sin(moveAngle) * e.speed * dt;
+    const gravDist=Math.hypot(player.x-e.x,player.y-e.y);
+    if(blackholeLevel>0 && gravDist<260){ moveAngle += Math.sin(e.phase*2)*.12; e.speed *= 1; }
+    const glitchSlow = glitchSlowTimer>0 ? .38 : 1;
+    const frostSlow = frostLevel>0 && bullets.some(b=>Math.hypot(b.x-e.x,b.y-e.y)<70) ? Math.max(.42,1-frostLevel*.13) : 1;
+    e.x += Math.cos(moveAngle) * e.speed * glitchSlow * frostSlow * dt;
+    e.y += Math.sin(moveAngle) * e.speed * glitchSlow * frostSlow * dt;
 
     if (e.type === "shooter" || e.type === "boss") {
       e.shootTimer -= dt;
@@ -1054,6 +1246,7 @@ function update(dt) {
     if (Math.hypot(player.x-w.x, player.y-w.y) <
         player.radius + w.radius + 5) {
       player.health = Math.min(player.maxHealth, player.health + 18);
+      playSound("pickup");
       showToast("+18 HULL REPAIRED");
       burst(w.x, w.y, "#67ff9a", 8);
       wrenches.splice(i, 1);
@@ -1074,8 +1267,8 @@ function update(dt) {
   // Wave clear rewards: boss waves grant a major bonus.
   if (enemies.length === 0 && kills > 0 && elapsed > 8) {
     const clearedWave = wave;
-    addGold(25, "WAVE CLEARED");
-    if (clearedWave % 5 === 0) addGold(100, "BOSS WAVE BONUS");
+    addGold(Math.round((60 + clearedWave*8)*(1+(upgrades.goldBonus||0))), "WAVE CLEARED");
+    if (clearedWave % 5 === 0) addGold(180, "BOSS WAVE BONUS");
     wave++;
     bossSpawned = false;
     showToast("WAVE " + wave);
@@ -1090,60 +1283,85 @@ function update(dt) {
 // ==========================================
 
 function drawBackground() {
-  const t = performance.now() * 0.00004;
-  // Deep-space gradient with slowly shifting nebula clouds.
-  const base = ctx.createLinearGradient(0, 0, W, H);
-  base.addColorStop(0, "#030611");
-  base.addColorStop(.52, "#090b22");
-  base.addColorStop(1, "#12051e");
-  ctx.fillStyle = base;
+  // The sky seen above the lunar surface: near-black space and a distant Earth.
+  ctx.fillStyle = "#03050b";
   ctx.fillRect(0, 0, W, H);
-
-  const nebula = (x, y, radius, color) => {
-    const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    g.addColorStop(0, color);
-    g.addColorStop(1, "rgba(0,0,0,0)");
-    ctx.fillStyle = g;
-    ctx.fillRect(x-radius, y-radius, radius*2, radius*2);
-  };
-  nebula(W*(.22 + Math.sin(t)*.035), H*.24, Math.max(W,H)*.55, "rgba(0,105,190,.19)");
-  nebula(W*(.82 + Math.cos(t*.8)*.04), H*.72, Math.max(W,H)*.48, "rgba(130,25,190,.18)");
-  nebula(W*.55, H*(.48 + Math.sin(t*1.3)*.025), Math.max(W,H)*.28, "rgba(0,235,255,.055)");
-
-  // Distant ringed planet, kept mostly at the edge so gameplay stays readable.
-  const px = W*.86, py = H*.17, pr = Math.min(W,H)*.095;
+  const earthX = W * 0.79, earthY = H * 0.20, earthR = Math.min(W,H) * 0.105;
   ctx.save();
-  ctx.globalAlpha = .78;
-  ctx.translate(px, py);
-  ctx.rotate(-.22);
-  ctx.strokeStyle = "rgba(0,246,255,.28)";
-  ctx.lineWidth = Math.max(2, pr*.09);
-  ctx.beginPath(); ctx.ellipse(0, 0, pr*1.7, pr*.43, 0, 0, Math.PI*2); ctx.stroke();
-  const planet = ctx.createRadialGradient(-pr*.35, -pr*.4, pr*.08, 0, 0, pr);
-  planet.addColorStop(0, "#b7f7ff"); planet.addColorStop(.28, "#327cbd"); planet.addColorStop(.7, "#34245f"); planet.addColorStop(1, "#090b20");
-  ctx.fillStyle = planet; ctx.beginPath(); ctx.arc(0, 0, pr, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle = "rgba(0,246,255,.4)"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.ellipse(0, 0, pr*1.7, pr*.43, 0, Math.PI, Math.PI*2); ctx.stroke();
-  ctx.restore();
-
-  // Fine starfield with a gentle twinkle.
-  if (!stars.length) stars = Array.from({length:150}, () => ({x:Math.random()*W,y:Math.random()*H,size:Math.random()*1.8+.3,alpha:Math.random()*.65+.15,phase:Math.random()*6.28}));
-  stars.forEach(s => {
-    const twinkle = .72 + .28 * Math.sin(performance.now()*.0015 + (s.phase || 0));
-    ctx.globalAlpha = s.alpha * twinkle;
-    ctx.fillStyle = s.size > 1.5 ? "#ffffff" : "#9defff";
-    ctx.fillRect(s.x, s.y, s.size, s.size);
-    if (s.size > 1.65) { ctx.fillRect(s.x-2, s.y+.5, s.size+4, .5); ctx.fillRect(s.x+.5, s.y-2, .5, s.size+4); }
-  });
+  ctx.globalAlpha = 0.92;
+  const halo = ctx.createRadialGradient(earthX, earthY, earthR*.7, earthX, earthY, earthR*2.1);
+  halo.addColorStop(0, "rgba(63,155,255,.20)"); halo.addColorStop(1, "rgba(30,80,180,0)");
+  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(earthX, earthY, earthR*2.1, 0, Math.PI*2); ctx.fill();
+  const earth = ctx.createRadialGradient(earthX-earthR*.36, earthY-earthR*.38, earthR*.05, earthX, earthY, earthR);
+  earth.addColorStop(0, "#b5e8ff"); earth.addColorStop(.32, "#328bd1"); earth.addColorStop(.62, "#14518a"); earth.addColorStop(1, "#071323");
+  ctx.fillStyle = earth; ctx.beginPath(); ctx.arc(earthX, earthY, earthR, 0, Math.PI*2); ctx.fill();
+  ctx.save(); ctx.beginPath(); ctx.arc(earthX, earthY, earthR, 0, Math.PI*2); ctx.clip();
+  ctx.fillStyle = "rgba(100,190,135,.58)"; ctx.beginPath(); ctx.moveTo(earthX-earthR*.8,earthY-earthR*.25); ctx.lineTo(earthX-earthR*.25,earthY-earthR*.5); ctx.lineTo(earthX,earthY-earthR*.08); ctx.lineTo(earthX-earthR*.2,earthY+earthR*.18); ctx.lineTo(earthX-earthR*.48,earthY+earthR*.55); ctx.lineTo(earthX-earthR*.8,earthY+earthR*.25); ctx.closePath(); ctx.fill();
+  ctx.restore(); ctx.restore();
+  if (!stars.length) stars = Array.from({length:170}, () => ({x:Math.random()*W,y:Math.random()*H,size:Math.random()*1.8+.3,alpha:Math.random()*.7+.2,phase:Math.random()*6.28}));
+  stars.forEach(st => { ctx.globalAlpha = st.alpha * (.78 + .22*Math.sin(performance.now()*.001 + st.phase)); ctx.fillStyle="#e8f5ff"; ctx.fillRect(st.x,st.y,st.size,st.size); });
   ctx.globalAlpha = 1;
-
-  // Subtle neon tactical grid and scanlines.
-  ctx.strokeStyle = "rgba(18,48,72,.48)";
-  ctx.lineWidth = 1;
-  const grid = 55;
-  for (let x = 0; x < W; x += grid) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-  for (let y = 0; y < H; y += grid) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-  ctx.fillStyle = "rgba(80,190,255,.025)";
-  for (let y = (performance.now()*.025)%6; y < H; y += 6) ctx.fillRect(0, y, W, 1);
+}
+function drawWorldMap() {
+  // Dusty grey lunar regolith with subtle elevation patches and rock scatter.
+  const ground = ctx.createLinearGradient(0, 0, WORLD.width*.72, WORLD.height);
+  ground.addColorStop(0, "#a5a5a1"); ground.addColorStop(.22, "#858681"); ground.addColorStop(.55, "#686a66"); ground.addColorStop(.82, "#777873"); ground.addColorStop(1, "#4b4e4c");
+  ctx.fillStyle = ground; ctx.fillRect(0,0,WORLD.width,WORLD.height);
+  // Deterministic surface speckle so the lunar terrain doesn't shimmer while moving.
+  for (let i=0;i<1700;i++) {
+    const x=(i*137.51)%WORLD.width, y=(i*311.73)%WORLD.height;
+    const r=1+(i%4)*.65;
+    ctx.fillStyle = i%3===0 ? "rgba(242,239,226,.17)" : "rgba(15,16,16,.17)";
+    ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+  }
+  // Craters: dark bowl, bright rim and a shaded inner crescent.
+  mapStructures.forEach((o,i)=>{
+    ctx.save(); ctx.translate(o.x,o.y); ctx.rotate(o.rot);
+    if (o.type === "crater") {
+      const rx=o.r*1.5, ry=o.r*.83;
+      const crater=ctx.createRadialGradient(-rx*.18,-ry*.22,o.r*.08,0,0,rx);
+      crater.addColorStop(0,"#343633"); crater.addColorStop(.52,"#4d4f4b"); crater.addColorStop(.72,"#686b66"); crater.addColorStop(.86,"#a6a7a0"); crater.addColorStop(.94,"#c0c0b8"); crater.addColorStop(1,"#747670");
+      ctx.fillStyle=crater; ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle="rgba(25,28,34,.45)"; ctx.lineWidth=3; ctx.beginPath(); ctx.ellipse(-rx*.08,-ry*.08,rx*.72,ry*.65,0,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle="rgba(15,18,22,.23)"; ctx.beginPath(); ctx.ellipse(rx*.2,ry*.16,rx*.4,ry*.3,0,0,Math.PI*2); ctx.fill();
+    } else {
+      // Jagged moon rocks, with no neon outlines.
+      ctx.fillStyle=i%2 ? "#343941" : "#454a52"; ctx.strokeStyle="#92969b"; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.moveTo(-o.r,-o.r*.3); ctx.lineTo(-o.r*.35,-o.r); ctx.lineTo(o.r*.45,-o.r*.76); ctx.lineTo(o.r,o.r*.18); ctx.lineTo(o.r*.25,o.r*.82); ctx.lineTo(-o.r*.72,o.r*.56); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle="rgba(220,223,228,.28)"; ctx.beginPath(); ctx.moveTo(-o.r*.35,-o.r*.55); ctx.lineTo(o.r*.22,-o.r*.4); ctx.lineTo(o.r*.48,o.r*.1); ctx.stroke();
+    }
+    ctx.restore();
+  });
+  // Scattered pebbles and tiny rock shadows across the terrain.
+  for(let i=0;i<260;i++) {
+    const x=(i*197.3+53)%WORLD.width, y=(i*283.9+19)%WORLD.height, r=2+(i%5);
+    ctx.fillStyle="rgba(18,21,27,.28)"; ctx.beginPath(); ctx.ellipse(x+2,y+3,r*1.5,r*.85,.25,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle="#92969c"; ctx.beginPath(); ctx.ellipse(x,y,r*1.3,r*.7,.25,0,Math.PI*2); ctx.fill();
+  }
+  // Subtle ridges, ejecta streaks, and distant terrain shading; no artificial grid.
+  for(let i=0;i<95;i++) {
+    const x=(i*487.7+113)%WORLD.width, y=(i*719.3+71)%WORLD.height;
+    ctx.save(); ctx.translate(x,y); ctx.rotate((i%9)*.31);
+    ctx.strokeStyle=i%2 ? "rgba(225,224,211,.09)" : "rgba(20,22,20,.10)";
+    ctx.lineWidth=2+(i%4); ctx.beginPath(); ctx.ellipse(0,0,18+(i%7)*7,4+(i%3)*3,0,0,Math.PI*2); ctx.stroke(); ctx.restore();
+  }
+  ctx.strokeStyle="rgba(220,220,208,.22)"; ctx.lineWidth=5; ctx.strokeRect(0,0,WORLD.width,WORLD.height);
+}
+function drawPowerEffects() {
+  if (acidRainLevel > 0) {
+    ctx.save(); acidDrops.forEach(d=>{ctx.globalAlpha=Math.min(1,d.life*2);ctx.fillStyle="#b9ff54";ctx.shadowColor="#8dff28";ctx.shadowBlur=10;ctx.beginPath();ctx.ellipse(d.x,d.y,3,10,.25,0,Math.PI*2);ctx.fill();}); ctx.restore();
+  }
+  if(laserFlash>0 && player) {
+    ctx.save();ctx.globalAlpha=Math.min(1,laserFlash/.12);ctx.lineCap='round';
+    ctx.strokeStyle='#00f6ff';ctx.shadowColor='#00f6ff';ctx.shadowBlur=28;ctx.lineWidth=25;
+    ctx.beginPath();ctx.moveTo(player.x,player.y);ctx.lineTo(player.x+Math.cos(player.angle)*900,player.y+Math.sin(player.angle)*900);ctx.stroke();
+    ctx.strokeStyle='#ffffff';ctx.shadowBlur=12;ctx.lineWidth=5;ctx.stroke();ctx.restore();
+  }
+  if(glitchFlash>0 && player) {
+    ctx.save();ctx.globalAlpha=Math.min(.8,glitchFlash);ctx.strokeStyle='#a855ff';ctx.lineWidth=7;ctx.shadowColor='#a855ff';ctx.shadowBlur=22;
+    ctx.beginPath();ctx.arc(player.x,player.y,420*(1-glitchFlash*.35),0,Math.PI*2);ctx.stroke();
+    ctx.setLineDash([8,12]);ctx.strokeStyle='#00f6ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(player.x,player.y,360*(1-glitchFlash*.25),0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);ctx.restore();
+  }
 }
 
 function drawPlayer() {
@@ -1305,10 +1523,18 @@ function draw() {
   }
 
   drawBackground();
-  drawObjects();
-  drawEnemies();
-  drawPlayer();
-
+  if (player && (state === "playing" || state === "upgrade" || state === "paused")) {
+    ctx.save();
+    ctx.translate(-cameraX,-cameraY);
+    drawWorldMap();
+    drawObjects();
+    drawEnemies();
+    drawPlayer();
+    drawPowerEffects();
+    ctx.restore();
+  } else {
+    // Animated title-screen preview uses the old ambient space backdrop.
+  }
   ctx.restore();
 }
 
@@ -1340,6 +1566,3 @@ updateRecordsUI();
 </script>
 </body>
 </html>
-
-
-
