@@ -11,6 +11,7 @@
   --pink: #ff287f;
   --purple: #a855ff;
   --bg: #050711;
+  --gold: #ffd166;
 }
 * { box-sizing: border-box; }
 body {
@@ -55,6 +56,13 @@ h1 {
   text-shadow: 0 0 20px #00f6ff88;
 }
 h2 { color: var(--pink); }
+#goldHud { color: var(--gold); text-shadow: 0 0 10px #ffd16688; }
+#shopScreen .card { width: min(850px, 100%); border-color: var(--purple); box-shadow: 0 0 45px #a855ff35, inset 0 0 25px #a855ff12; }
+#skinGrid { display:grid; grid-template-columns:repeat(auto-fit,minmax(145px,1fr)); gap:10px; margin:18px 0; }
+.skin { border:1px solid #29445e; background:#07101f; padding:14px 8px; }
+.shipPreview { width:48px; height:38px; margin:0 auto 10px; filter:drop-shadow(0 0 8px currentColor); clip-path:polygon(100% 50%,15% 0,30% 50%,15% 100%); }
+.skin strong { display:block; margin:5px 0; }
+.skin button { width:100%; padding:8px 4px; font-size:12px; margin:5px 0 0; }
 p { color: #a9bfd5; line-height: 1.6; }
 button {
   background: #071b2b;
@@ -167,6 +175,7 @@ button:disabled { opacity: .4; cursor: not-allowed; }
   </div>
   <div class="hudbox">
     <div>LEVEL <span id="levelText">1</span></div>
+    <div id="goldHud">◆ <span id="goldText">0</span> GOLD</div>
     <div>WAVE <span id="waveText">1</span></div>
     <div>SCORE <span id="scoreText">0</span></div>
     <div>KILLS <span id="killsText">0</span></div>
@@ -188,10 +197,14 @@ button:disabled { opacity: .4; cursor: not-allowed; }
     <div style="color:var(--pink);letter-spacing:5px">LAST SIGNAL</div>
     <p>The signal is fading. The void is approaching.<br>Survive the waves. Become unstoppable.</p>
     <button id="startBtn">▶ START GAME</button>
+    <button id="shopOpenBtn">◆ SHIP HANGAR</button>
+    <p>DIFFICULTY: <select id="difficultySelect" style="background:#071b2b;color:#00f6ff;border:1px solid #00f6ff;padding:9px;font: bold 14px Consolas"><option value="easy">EASY</option><option value="normal" selected>NORMAL</option><option value="hard">HARD</option></select></p>
+    <p class="small">Earn gold by clearing waves. Boss waves pay extra.</p>
     <p class="small">WASD / ARROWS: Move<br>Mouse: Aim · Click / Space: Shoot<br>SHIFT: Dash · P / ESC: Pause</p>
-    <p class="small">SECRET: Type <b>0209</b> during gameplay.</p>
   </div>
 </div>
+
+<div id="shopScreen" class="panel hidden"><div class="card"><h1 style="font-size:38px;color:var(--purple)">SHIP HANGAR</h1><p>Customize your ride. Gold and unlocked skins save on this device.</p><h2 id="shopGold">◆ 0 GOLD</h2><div id="skinGrid"></div><button id="shopCloseBtn">BACK</button></div></div>
 
 <div id="upgradeScreen" class="panel hidden">
   <div class="card">
@@ -218,12 +231,13 @@ button:disabled { opacity: .4; cursor: not-allowed; }
     <h2 id="finalStats"></h2>
     <button id="retryBtn">TRY AGAIN</button>
     <button id="titleOverBtn">MAIN MENU</button>
+    <button id="shopOverBtn">◆ BUY / EQUIP SKINS</button>
   </div>
 </div>
 
 <div id="devPanel" class="hidden">
   <h2>DEVELOPER TERMINAL</h2>
-  <p class="small">Enter a command.</p>
+  <p class="small">DEV CODES INPUT — enter a code below.</p>
   <input id="devInput" placeholder="Type a command..." autocomplete="off">
   <button id="devRunBtn">EXECUTE</button>
   <button id="devCloseBtn">CLOSE</button>
@@ -289,6 +303,26 @@ let digitBuffer = "";
 let digitTimer = 0;
 let devUnlocked = false;
 let toastTimer = 0;
+
+const skinCatalog = [
+  {id:"cyan", name:"NEON CORE", color:"#00f6ff", price:0, desc:"Original signal"},
+  {id:"void", name:"VOID PURPLE", color:"#a855ff", price:150, desc:"Born in the void"},
+  {id:"inferno", name:"INFERNO", color:"#ff633d", price:250, desc:"Burn through space"},
+  {id:"glitch", name:"GLITCH", color:"#ff287f", price:400, desc:"Unstable frequency"},
+  {id:"gold", name:"GOLDEN", color:"#ffd166", price:600, desc:"Pure prestige"},
+  {id:"phantom", name:"PHANTOM", color:"#b8f7d4", price:800, desc:"Silent and deadly"},
+  {id:"hacker", name:"HACKER", color:"#000000", price:5000, desc:"Black hull. Falling Matrix code."}
+];
+let economy = {gold:0, unlocked:["cyan"], equipped:"cyan"};
+let difficulty = "normal";
+const difficultySettings = {easy:{enemyHp:.75, enemyDamage:.65, enemySpeed:.88, spawn:.8},normal:{enemyHp:1,enemyDamage:1,enemySpeed:1,spawn:1},hard:{enemyHp:1.5,enemyDamage:1.45,enemySpeed:1.18,spawn:1.25}};
+try { const saved = JSON.parse(localStorage.getItem("voidbreakEconomy") || "null"); if(saved && Number.isFinite(saved.gold) && Array.isArray(saved.unlocked)) economy = {gold:Math.max(0,saved.gold), unlocked:[...new Set(["cyan",...saved.unlocked])], equipped:saved.equipped || "cyan"}; } catch(e) {}
+function saveEconomy(){ try { localStorage.setItem("voidbreakEconomy", JSON.stringify(economy)); } catch(e) {} updateGoldUI(); }
+function updateGoldUI(){ if($("goldText")) $("goldText").textContent=economy.gold.toLocaleString(); if($("shopGold")) $("shopGold").textContent="◆ "+economy.gold.toLocaleString()+" GOLD"; }
+function addGold(amount, reason){ economy.gold += amount; saveEconomy(); showToast("+"+amount+" GOLD · "+reason); }
+function renderShop(){ updateGoldUI(); const grid=$("skinGrid"); grid.innerHTML=""; skinCatalog.forEach(skin=>{ const owned=economy.unlocked.includes(skin.id), equipped=economy.equipped===skin.id; const card=document.createElement("div"); card.className="skin"; card.innerHTML=`<div class="shipPreview" style="background:${skin.color};color:${skin.color}"></div><strong>${skin.name}</strong><div class="small">${skin.desc}</div><div style="color:var(--gold);margin:8px 0">${skin.price===0?"FREE":"◆ "+skin.price}</div><button>${equipped?"EQUIPPED":owned?"EQUIP": "UNLOCK"}</button>`; const btn=card.querySelector("button"); btn.disabled=equipped; btn.onclick=()=>{ if(owned){economy.equipped=skin.id;saveEconomy();renderShop();showToast(skin.name+" EQUIPPED");} else if(economy.gold>=skin.price){economy.gold-=skin.price;economy.unlocked.push(skin.id);economy.equipped=skin.id;saveEconomy();renderShop();showToast(skin.name+" UNLOCKED!");} else {showToast("NEED "+(skin.price-economy.gold)+" MORE GOLD");} }; grid.appendChild(card); }); }
+function openShop(fromPause=false){ renderShop(); $("shopScreen").classList.remove("hidden"); if(state==="playing") state="shop"; $("pauseScreen").classList.add("hidden"); $("titleScreen").classList.add("hidden"); $("hud").classList.add("hidden"); }
+function closeShop(){ $("shopScreen").classList.add("hidden"); if(state==="shop"){state="title";$("titleScreen").classList.remove("hidden");} else {$("titleScreen").classList.remove("hidden");} }
 
 const upgrades = {
   damage: 1,
@@ -407,6 +441,7 @@ function resetGame() {
   $("upgradeScreen").classList.add("hidden");
   $("pauseScreen").classList.add("hidden");
   $("gameOverScreen").classList.add("hidden");
+  $("shopScreen").classList.add("hidden");
   $("devPanel").classList.add("hidden");
   $("hud").classList.remove("hidden");
 
@@ -572,9 +607,16 @@ function runDevCommand(command) {
       activateInfiniteLevel();
       message.textContent = "Infinite level mode activated.";
       break;
+    case "skins":
+      economy.gold = Math.max(economy.gold, 999999);
+      economy.unlocked = skinCatalog.map(skin => skin.id);
+      saveEconomy();
+      renderShop();
+      message.textContent = "ALL SKINS UNLOCKED — +999,999 GOLD!";
+      break;
     default:
       message.textContent =
-        "Unknown command. Try heal, xp, clear, invincible, score, wave, infinite.";
+        "Commands: heal, xp, clear, invincible, score, wave, infinite, skins.";
       return;
   }
   updateHUD();
@@ -612,18 +654,22 @@ addEventListener("keydown", e => {
     digitTimer = 2.5;
 
     if (digitBuffer === "0209") {
+      // Secret entry: reveal the developer terminal without advertising it in the menu.
+      devUnlocked = true;
       activateInfiniteLevel();
+      $("devPanel").classList.remove("hidden");
+      $("devInput").value = "";
+      $("devMessage").textContent = "Developer access granted. Enter a code below.";
+      $("devInput").focus();
       digitBuffer = "";
     }
   }
 
-  // Open developer terminal with F2 after entering 0209.
-  if (key === "f2" && state !== "title" && state !== "gameover") {
+  // F2 only works after the secret code has unlocked developer access.
+  if (key === "f2" && devUnlocked && state !== "title" && state !== "gameover") {
     e.preventDefault();
     $("devPanel").classList.toggle("hidden");
-    if (!$("devPanel").classList.contains("hidden")) {
-      $("devInput").focus();
-    }
+    if (!$("devPanel").classList.contains("hidden")) $("devInput").focus();
   }
 });
 
@@ -651,6 +697,11 @@ $("devInput").addEventListener("keydown", e => {
 $("devCloseBtn").onclick = () => $("devPanel").classList.add("hidden");
 
 $("startBtn").onclick = startGame;
+$("shopOpenBtn").onclick = () => openShop();
+$("shopOverBtn").onclick = () => openShop();
+$("difficultySelect").addEventListener("change", e => { difficulty=e.target.value; try{localStorage.setItem("voidbreakDifficulty",difficulty)}catch(err){} });
+try { const savedDifficulty=localStorage.getItem("voidbreakDifficulty"); if(savedDifficulty && difficultySettings[savedDifficulty]) {difficulty=savedDifficulty; $("difficultySelect").value=difficulty;} } catch(e) {}
+$("shopCloseBtn").onclick = closeShop;
 $("retryBtn").onclick = startGame;
 $("restartPauseBtn").onclick = startGame;
 $("resumeBtn").onclick = togglePause;
@@ -674,7 +725,9 @@ $("titleOverBtn").onclick = () => {
 // ==========================================
 
 function spawnEnemy() {
-  if (enemies.length >= 12 + Math.min(wave, 8)) return;
+  // The crowd grows steadily with each wave, then levels off to keep the screen fair.
+  const waveCrowd = 12 + Math.min(18, Math.floor((wave - 1) * 0.8));
+  if (enemies.length >= Math.round(waveCrowd * difficultySettings[difficulty].spawn)) return;
 
   const side = Math.floor(Math.random() * 4);
   let x, y;
@@ -698,7 +751,12 @@ function spawnEnemy() {
     shooter:{ radius: 14, hp: 3 + wave * .3, speed: 45 + wave, color: "#ff554c", value: 25 }
   };
 
-  const c = configs[type];
+  const c = {...configs[type]};
+  // Small, capped scaling: later waves feel busier without enemies becoming absurdly fast.
+  const gradualPower = 1 + Math.min(0.65, Math.max(0, wave - 1) * 0.018);
+  const gradualSpeed = 1 + Math.min(0.32, Math.max(0, wave - 1) * 0.008);
+  c.hp *= difficultySettings[difficulty].enemyHp * gradualPower;
+  c.speed *= difficultySettings[difficulty].enemySpeed * gradualSpeed;
   enemies.push({
     x, y, type, radius: c.radius,
     hp: c.hp, maxHp: c.hp,
@@ -714,9 +772,9 @@ function spawnBoss() {
     y: -65,
     type: "boss",
     radius: 34,
-    hp: 80 + wave * 18,
-    maxHp: 80 + wave * 18,
-    speed: 38 + wave,
+    hp: (80 + wave * 18) * difficultySettings[difficulty].enemyHp,
+    maxHp: (80 + wave * 18) * difficultySettings[difficulty].enemyHp,
+    speed: (38 + wave) * difficultySettings[difficulty].enemySpeed,
     color: "#ff287f",
     value: 300,
     shootTimer: 1,
@@ -868,7 +926,9 @@ function update(dt) {
   spawnTimer -= dt;
   if (spawnTimer <= 0) {
     spawnEnemy();
-    spawnTimer = Math.max(.5, 1.6 - wave * .045) *
+    // Spawn frequency increases gradually, with a hard floor to avoid unfair swarms.
+    const spawnRamp = Math.min(0.48, Math.max(0, wave - 1) * 0.012);
+    spawnTimer = Math.max(.72, 1.6 - spawnRamp) *
       (.85 + Math.random() * .45);
   }
 
@@ -935,7 +995,7 @@ function update(dt) {
 
     if (Math.hypot(e.x-player.x, e.y-player.y) <
         e.radius + player.radius) {
-      damagePlayer(e.type === "boss" ? 22 : 12);
+      damagePlayer((e.type === "boss" ? 22 : e.type === "fast" ? 3 : 12) * difficultySettings[difficulty].enemyDamage);
     }
 
     for (let j = bullets.length - 1; j >= 0; j--) {
@@ -1001,8 +1061,11 @@ function update(dt) {
   });
   particles = particles.filter(p => p.life > 0);
 
-  // Advance waves when the field is clear.
+  // Wave clear rewards: boss waves grant a major bonus.
   if (enemies.length === 0 && kills > 0 && elapsed > 8) {
+    const clearedWave = wave;
+    addGold(25, "WAVE CLEARED");
+    if (clearedWave % 5 === 0) addGold(100, "BOSS WAVE BONUS");
     wave++;
     bossSpawned = false;
     showToast("WAVE " + wave);
@@ -1053,8 +1116,9 @@ function drawPlayer() {
     ctx.shadowColor = "#00f6ff";
   }
 
-  ctx.fillStyle = "#00f6ff";
-  ctx.strokeStyle = "#c7ffff";
+  const shipColor = (skinCatalog.find(s => s.id === economy.equipped) || skinCatalog[0]).color;
+  ctx.fillStyle = economy.equipped === "hacker" ? "#000000" : shipColor;
+  ctx.strokeStyle = economy.equipped === "hacker" ? "#00ff41" : "#ffffff";
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(19, 0);
@@ -1065,7 +1129,20 @@ function drawPlayer() {
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = "#ffffff";
+  if (economy.equipped === "hacker") {
+    ctx.save();
+    ctx.beginPath(); ctx.moveTo(15,0); ctx.lineTo(-10,-9); ctx.lineTo(-5,0); ctx.lineTo(-10,9); ctx.closePath(); ctx.clip();
+    ctx.font = "7px monospace"; ctx.fillStyle = "#00ff41"; ctx.shadowColor="#00ff41"; ctx.shadowBlur=5;
+    for(let col=-9; col<12; col+=5) {
+      const offset=(performance.now()/45 + col*7)%28;
+      for(let row=-14; row<15; row+=5) {
+        const yy=((row+offset+28)%28)-14;
+        ctx.fillText(Math.random()>.5?"1":"0",col,yy);
+      }
+    }
+    ctx.restore();
+  }
+  ctx.fillStyle = economy.equipped === "hacker" ? "#00ff41" : "#ffffff";
   ctx.fillRect(-2, -3, 9, 6);
   ctx.restore();
 
@@ -1191,7 +1268,7 @@ function draw() {
 }
 
 function loop(now) {
-  if (state === "title" || state === "gameover") {
+  if (state === "title" || state === "gameover" || state === "shop") {
     draw();
     return;
   }
@@ -1213,6 +1290,7 @@ function titleLoop() {
   }
 }
 titleLoop();
+updateGoldUI();
 </script>
 </body>
 </html>
