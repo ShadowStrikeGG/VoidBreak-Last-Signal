@@ -1,4 +1,192 @@
 
+Loading older messages…
+custom domain
+Custom domain
+
+Custom domains allow you to serve your site from a domain other than shadowstrikegg.github.io. Learn more about configuring custom domains.
+
+DNS check unsuccessful
+
+Both voidbreak.com and its alternate name are improperly configured
+
+Domain does not resolve to the GitHub Pages server. For more information, see documentation (NotServedByPagesError).
+
+BROOO 😭💀 Your domain is connected in GitHub Pages settings, but GitHub can't find the DNS records pointing voidbreak.com to GitHub Pages yet.
+
+You need to fix the DNS settings at the company where you bought voidbreak.com (your domain registrar). You usually don't need to buy anything else if you already own the domain.
+
+Step 1 — Add the DNS records
+Open your domain registrar's DNS management page and look for DNS Records, Manage DNS, or DNS Zone.
+
+For the root domain voidbreak.com, add these four A records:
+
+Type
+
+Host / Name
+
+Value / Points to
+
+A
+
+@
+
+185.199.108.153
+
+A
+
+@
+
+185.199.109.153
+
+A
+
+@
+
+185.199.110.153
+
+A
+
+@
+
+185.199.111.153
+
+These are GitHub Pages' documented IPv4 addresses.
+
+Step 2 — Set up the alternate name (www)
+Add one more DNS record so www.voidbreak.com works too:
+
+Type
+
+Host / Name
+
+Value / Points to
+
+CNAME
+
+www
+
+shadowstrikegg.github.io
+
+GitHub recommends configuring both the root domain and the www subdomain. 
+
+GitHub Docs
++1
+
+Step 3 — Check for conflicting records
+Remove conflicting A records for @ that point somewhere else.
+
+If you have incorrect AAAA records, remove them; optionally add GitHub's four official IPv6 records.
+
+Don't delete unrelated email records such as MX records.
+
+Step 4 — Wait and recheck
+DNS changes can take up to 24 hours to propagate. Then return to GitHub → your repository → Settings → Pages and click Check again, if shown. 
+
+GitHub Docs
+
+Official guide: 
+GitHub Pages custom-domain setup
+.
+
+Quick question: Where did you buy voidbreak.com — Namecheap, GoDaddy, Cloudflare, or somewhere else? Tell me the provider, and I'll walk you through the exact screens.
+
+i just typed it in hoping it would work
+BROOOOO 😭💀 YOU CAN'T JUST MANIFEST A DOMAIN INTO EXISTENCE 💀
+
+voidbreak.com is a real internet address that someone has to register before you can use it. Typing it into GitHub Pages doesn't buy it or automatically connect it.
+
+Here's what you can do:
+
+Free option: Keep using https://shadowstrikegg.github.io/ — it already works as your GitHub Pages address.
+
+Custom domain option: If you really want voidbreak.com, you'll need to check whether it's available and register it through a domain registrar. That usually costs money each year.
+
+My recommendation? Keep building VOIDBREAK for free for now. You can always add a custom domain later. 🎮🔥
+
+And honestly, shadowstrikegg.github.io is perfectly fine while you're getting your game running!
+
+can i type it in on any device
+YES BRO 😭🔥 You can type your website address on basically any device with a web browser and an internet connection!
+
+💻 PC/laptop: Chrome, Edge, Firefox
+
+📱 Phone: Chrome or Safari
+
+📲 Tablet: Chrome or another browser
+
+🎮 Gaming handheld: If it has a web browser, it may work there too!
+
+Your current website is:
+
+VOIDBREAK 🎮
+Your free GitHub Pages address
+
+shadowstrikegg.github.io
+
+One catch: You can visit your existing address on other devices, but voidbreak.com won't work as your custom domain until you register it and configure it.
+
+You could even send your friends the GitHub Pages link so they can try your game! 😎
+
+ok phew
+LMAOOO 😭💀 BRO ALMOST THOUGHT HE BROKE THE INTERNET.
+
+You're good 😂 Your game can already be visited at your GitHub Pages link, and you don't need to pay for a custom domain.
+
+VOIDBREAK is still alive. 🔥🎮
+
+it needs a cool backround, and to be able to save progresss
+
+Worked for 37s
+BROOOOO 🔥🌌 I upgraded VOIDBREAK: LAST SIGNAL with a cooler space background and automatic progress saving!
+
+Neon Spinning Rings
+
+1. 🌌 New animated space background
+
+Blue and purple nebula clouds
+
+A glowing ringed planet
+
+Twinkling stars and a neon grid
+
+Subtle animated scanlines
+
+2. 💾 Automatic progress saving
+
+Gold and unlocked ship skins
+
+Equipped ship
+
+Highest wave reached
+
+Highest score achieved
+
+Download the updated game
+VOIDBREAK — Hacker Update
+
+Updated HTML game · Ready to replace your old file
+
+Download the updated HTML game
+
+Download the text version
+
+Important: The saved progress stays in the same browser on the same device. It doesn't yet save an unfinished run so you can resume in the middle of a wave.
+
+Get it onto your website
+Download the HTML version.
+
+Rename it index.html if needed.
+
+Replace the old index.html in your glitchshift-solid GitHub repository.
+
+Commit the change and wait for GitHub Pages to update.
+
+Then refresh your site and check out the new background! 🚀
+
+
+VOIDBREAK-LAST-SIGNAL-HACKER-UPDATE.txt
+Document
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1341,3 +1529,6 @@ updateRecordsUI();
 </script>
 </body>
 </html>
+
+
+
