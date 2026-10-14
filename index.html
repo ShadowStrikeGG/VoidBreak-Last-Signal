@@ -1,0 +1,1218 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VOIDBREAK: LAST SIGNAL</title>
+<style>
+:root {
+  --cyan: #00f6ff;
+  --pink: #ff287f;
+  --purple: #a855ff;
+  --bg: #050711;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: #e9faff;
+  font-family: Consolas, "Courier New", monospace;
+  overflow: hidden;
+}
+canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+  cursor: crosshair;
+}
+.panel {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(2, 4, 15, .88);
+  backdrop-filter: blur(8px);
+  z-index: 5;
+}
+.card {
+  width: min(580px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  border: 1px solid var(--cyan);
+  background: rgba(5, 12, 29, .97);
+  box-shadow: 0 0 35px #00f6ff25, inset 0 0 25px #00f6ff0a;
+  padding: 28px;
+  text-align: center;
+}
+h1 {
+  font-size: clamp(30px, 7vw, 54px);
+  color: var(--cyan);
+  margin: 0 0 5px;
+  letter-spacing: 3px;
+  text-shadow: 0 0 20px #00f6ff88;
+}
+h2 { color: var(--pink); }
+p { color: #a9bfd5; line-height: 1.6; }
+button {
+  background: #071b2b;
+  color: var(--cyan);
+  border: 1px solid var(--cyan);
+  font: bold 15px Consolas, monospace;
+  padding: 12px 18px;
+  margin: 5px;
+  cursor: pointer;
+  transition: .15s;
+}
+button:hover {
+  background: var(--cyan);
+  color: #001018;
+  box-shadow: 0 0 18px #00f6ff77;
+}
+button:disabled { opacity: .4; cursor: not-allowed; }
+.hidden { display: none !important; }
+#hud {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  pointer-events: none;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  z-index: 2;
+  text-shadow: 0 0 8px #00f6ff;
+  font-size: 14px;
+}
+.hudbox {
+  padding: 10px 12px;
+  border: 1px solid #00f6ff55;
+  background: #030916c9;
+  min-width: 135px;
+}
+.bar {
+  width: 170px;
+  max-width: 40vw;
+  height: 9px;
+  background: #192638;
+  margin-top: 6px;
+  overflow: hidden;
+}
+.fill { height: 100%; width: 100%; transition: width .15s; }
+#healthFill { background: #ff287f; }
+#xpFill { background: #00f6ff; }
+#upgradeChoices {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+  gap: 8px;
+  margin-top: 15px;
+}
+#upgradeChoices button { min-height: 90px; }
+.small { font-size: 12px; color: #8ca9c1; }
+#toast {
+  position: fixed;
+  top: 105px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: var(--cyan);
+  text-align: center;
+  text-shadow: 0 0 12px var(--cyan);
+  pointer-events: none;
+  z-index: 4;
+}
+#devPanel {
+  position: fixed;
+  z-index: 10;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(370px, 92vw);
+  background: #080c1bf5;
+  border: 1px solid var(--purple);
+  box-shadow: 0 0 30px #a855ff44;
+  padding: 20px;
+  text-align: center;
+}
+#devPanel button { border-color: var(--purple); color: #d6a7ff; }
+#devPanel input {
+  width: 100%;
+  padding: 10px;
+  margin: 8px 0;
+  background: #020611;
+  color: white;
+  border: 1px solid var(--purple);
+  font: 15px Consolas, monospace;
+}
+@media(max-width:600px) {
+  #hud { font-size: 11px; }
+  .hudbox { min-width: 105px; padding: 7px; }
+  .bar { width: 110px; }
+  .card { padding: 20px 12px; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="hud" class="hidden">
+  <div class="hudbox">
+    <div>HULL <span id="healthText">100 / 100</span></div>
+    <div class="bar"><div id="healthFill" class="fill"></div></div>
+    <div style="margin-top:8px">XP <span id="xpText">0 / 8</span></div>
+    <div class="bar"><div id="xpFill" class="fill"></div></div>
+  </div>
+  <div class="hudbox">
+    <div>LEVEL <span id="levelText">1</span></div>
+    <div>WAVE <span id="waveText">1</span></div>
+    <div>SCORE <span id="scoreText">0</span></div>
+    <div>KILLS <span id="killsText">0</span></div>
+  </div>
+  <div class="hudbox">
+    <div>VOIDBREAK</div>
+    <div id="modeText">SURVIVAL MODE</div>
+    <div class="small">WASD: Move</div>
+    <div class="small">Mouse / SPACE: Fire</div>
+    <div class="small">SHIFT: Dash · P: Pause</div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div id="titleScreen" class="panel">
+  <div class="card">
+    <h1>VOIDBREAK</h1>
+    <div style="color:var(--pink);letter-spacing:5px">LAST SIGNAL</div>
+    <p>The signal is fading. The void is approaching.<br>Survive the waves. Become unstoppable.</p>
+    <button id="startBtn">▶ START GAME</button>
+    <p class="small">WASD / ARROWS: Move<br>Mouse: Aim · Click / Space: Shoot<br>SHIFT: Dash · P / ESC: Pause</p>
+    <p class="small">SECRET: Type <b>0209</b> during gameplay.</p>
+  </div>
+</div>
+
+<div id="upgradeScreen" class="panel hidden">
+  <div class="card">
+    <h2>LEVEL UP!</h2>
+    <p>Choose an upgrade for your ship.</p>
+    <div id="upgradeChoices"></div>
+  </div>
+</div>
+
+<div id="pauseScreen" class="panel hidden">
+  <div class="card">
+    <h1 style="font-size:38px">PAUSED</h1>
+    <p>The void can wait.</p>
+    <button id="resumeBtn">RESUME</button>
+    <button id="restartPauseBtn">RESTART</button>
+    <button id="titlePauseBtn">MAIN MENU</button>
+  </div>
+</div>
+
+<div id="gameOverScreen" class="panel hidden">
+  <div class="card">
+    <h1 style="color:var(--pink)">SIGNAL LOST</h1>
+    <p>Your ship has been destroyed.</p>
+    <h2 id="finalStats"></h2>
+    <button id="retryBtn">TRY AGAIN</button>
+    <button id="titleOverBtn">MAIN MENU</button>
+  </div>
+</div>
+
+<div id="devPanel" class="hidden">
+  <h2>DEVELOPER TERMINAL</h2>
+  <p class="small">Enter a command.</p>
+  <input id="devInput" placeholder="Type a command..." autocomplete="off">
+  <button id="devRunBtn">EXECUTE</button>
+  <button id="devCloseBtn">CLOSE</button>
+  <p class="small" id="devMessage">
+    Commands: heal, xp, clear, invincible, score, wave, infinite
+  </p>
+</div>
+
+<script>
+"use strict";
+
+// ==========================================
+// VOIDBREAK: LAST SIGNAL
+// Complete single-file survival shooter
+// ==========================================
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+let W = innerWidth, H = innerHeight;
+function resize() {
+  W = canvas.width = innerWidth * devicePixelRatio;
+  H = canvas.height = innerHeight * devicePixelRatio;
+  canvas.style.width = innerWidth + "px";
+  canvas.style.height = innerHeight + "px";
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  W = innerWidth;
+  H = innerHeight;
+}
+addEventListener("resize", resize);
+resize();
+
+const $ = id => document.getElementById(id);
+const keys = {};
+const mouse = { x: W / 2, y: H / 2, down: false };
+
+let state = "title";
+let player;
+let enemies = [];
+let bullets = [];
+let enemyBullets = [];
+let particles = [];
+let orbs = [];
+let wrenches = [];
+let stars = [];
+
+let score = 0;
+let kills = 0;
+let wave = 1;
+let level = 1;
+let xp = 0;
+let nextXP = 8;
+let spawnTimer = 0;
+let elapsed = 0;
+let lastTime = 0;
+let shake = 0;
+let dashCooldown = 0;
+let bossSpawned = false;
+
+let infiniteLevel = false;
+let invincible = false;
+let digitBuffer = "";
+let digitTimer = 0;
+let devUnlocked = false;
+let toastTimer = 0;
+
+const upgrades = {
+  damage: 1,
+  rate: 1,
+  speed: 1,
+  multishot: 1,
+  maxHealth: 100,
+  pickup: 1,
+  dash: 1
+};
+
+const upgradeList = [
+  {
+    name: "OVERCHARGED",
+    description: "+35% weapon damage",
+    apply: () => upgrades.damage *= 1.35
+  },
+  {
+    name: "RAPID FIRE",
+    description: "Shoot 22% faster",
+    apply: () => upgrades.rate *= 1.22
+  },
+  {
+    name: "THRUSTER BOOST",
+    description: "+12% movement speed",
+    apply: () => upgrades.speed *= 1.12
+  },
+  {
+    name: "SPLIT SHOT",
+    description: "Add another projectile",
+    apply: () => upgrades.multishot = Math.min(5, upgrades.multishot + 1)
+  },
+  {
+    name: "REINFORCED HULL",
+    description: "+25 max health and heal 25",
+    apply: () => {
+      upgrades.maxHealth += 25;
+      player.maxHealth = upgrades.maxHealth;
+      player.health = Math.min(player.maxHealth, player.health + 25);
+    }
+  },
+  {
+    name: "MAGNET CORE",
+    description: "Collect XP from farther away",
+    apply: () => upgrades.pickup *= 1.35
+  },
+  {
+    name: "DASH CAPACITOR",
+    description: "Dash recharges faster",
+    apply: () => upgrades.dash *= 1.25
+  },
+  {
+    name: "FIELD REPAIR",
+    description: "Restore 35 hull points",
+    apply: () => player.health = Math.min(player.maxHealth, player.health + 35)
+  }
+];
+
+function makePlayer() {
+  return {
+    x: W / 2,
+    y: H / 2,
+    radius: 13,
+    speed: 250,
+    health: upgrades.maxHealth,
+    maxHealth: upgrades.maxHealth,
+    fireTimer: 0,
+    dashTime: 0,
+    angle: 0
+  };
+}
+
+function resetGame() {
+  score = 0;
+  kills = 0;
+  wave = 1;
+  level = 1;
+  xp = 0;
+  nextXP = 8;
+  spawnTimer = 0;
+  elapsed = 0;
+  shake = 0;
+  dashCooldown = 0;
+  bossSpawned = false;
+  infiniteLevel = false;
+  invincible = false;
+  digitBuffer = "";
+  devUnlocked = false;
+
+  Object.assign(upgrades, {
+    damage: 1,
+    rate: 1,
+    speed: 1,
+    multishot: 1,
+    maxHealth: 100,
+    pickup: 1,
+    dash: 1
+  });
+
+  player = makePlayer();
+  enemies = [];
+  bullets = [];
+  enemyBullets = [];
+  particles = [];
+  orbs = [];
+  wrenches = [];
+
+  stars = Array.from({ length: 100 }, () => ({
+    x: Math.random() * W,
+    y: Math.random() * H,
+    size: Math.random() * 2 + .3,
+    alpha: Math.random() * .6 + .15
+  }));
+
+  $("titleScreen").classList.add("hidden");
+  $("upgradeScreen").classList.add("hidden");
+  $("pauseScreen").classList.add("hidden");
+  $("gameOverScreen").classList.add("hidden");
+  $("devPanel").classList.add("hidden");
+  $("hud").classList.remove("hidden");
+
+  state = "playing";
+  updateHUD();
+  showToast("SIGNAL ONLINE");
+}
+
+function startGame() {
+  resetGame();
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
+}
+
+function showToast(message) {
+  $("toast").textContent = message;
+  toastTimer = 2.2;
+}
+
+function updateHUD() {
+  if (!player) return;
+  $("healthText").textContent =
+    Math.ceil(player.health) + " / " + player.maxHealth;
+  $("healthFill").style.width =
+    Math.max(0, player.health / player.maxHealth * 100) + "%";
+  $("xpText").textContent = infiniteLevel
+    ? "INFINITE"
+    : xp + " / " + nextXP;
+  $("xpFill").style.width = infiniteLevel
+    ? "100%"
+    : Math.min(100, xp / nextXP * 100) + "%";
+  $("levelText").textContent = infiniteLevel ? "∞" : level;
+  $("waveText").textContent = wave;
+  $("scoreText").textContent = Math.floor(score).toLocaleString();
+  $("killsText").textContent = kills;
+  $("modeText").textContent = infiniteLevel
+    ? "INFINITE MODE"
+    : invincible ? "GOD MODE" : "SURVIVAL MODE";
+}
+
+function togglePause() {
+  if (state === "playing") {
+    state = "paused";
+    $("pauseScreen").classList.remove("hidden");
+  } else if (state === "paused") {
+    state = "playing";
+    $("pauseScreen").classList.add("hidden");
+    lastTime = performance.now();
+  }
+}
+
+function gameOver() {
+  if (state === "gameover") return;
+  state = "gameover";
+  $("finalStats").textContent =
+    "WAVE " + wave + " · LEVEL " +
+    (infiniteLevel ? "∞" : level) + " · SCORE " + score;
+  $("gameOverScreen").classList.remove("hidden");
+}
+
+function openUpgrade() {
+  if (infiniteLevel || state !== "playing") return;
+  state = "upgrade";
+  $("upgradeChoices").innerHTML = "";
+
+  const choices = [...upgradeList]
+    .sort(() => Math.random() - .5)
+    .slice(0, 3);
+
+  choices.forEach(item => {
+    const button = document.createElement("button");
+    button.innerHTML = "<b>" + item.name + "</b><br><br><span class='small'>" +
+      item.description + "</span>";
+    button.onclick = () => {
+      item.apply();
+      $("upgradeScreen").classList.add("hidden");
+      state = "playing";
+      updateHUD();
+      showToast(item.name + " ACQUIRED");
+    };
+    $("upgradeChoices").appendChild(button);
+  });
+
+  $("upgradeScreen").classList.remove("hidden");
+}
+
+function gainXP(amount) {
+  if (infiniteLevel) return;
+
+  xp += amount;
+
+  let leveled = false;
+  while (xp >= nextXP) {
+    xp -= nextXP;
+    level++;
+    nextXP = Math.floor(nextXP * 1.3 + 4);
+    leveled = true;
+  }
+
+  updateHUD();
+
+  if (leveled) {
+    showToast("LEVEL " + level + " REACHED");
+    openUpgrade();
+  }
+}
+
+// ==========================================
+// SECRET CODES AND DEVELOPER TERMINAL
+// ==========================================
+
+function activateInfiniteLevel() {
+  infiniteLevel = true;
+  level = Infinity;
+  xp = 0;
+  nextXP = Infinity;
+
+  upgrades.damage = 5;
+  upgrades.rate = 2.5;
+  upgrades.multishot = 5;
+  upgrades.speed = 1.6;
+  upgrades.maxHealth = 500;
+
+  player.maxHealth = 500;
+  player.health = 500;
+
+  updateHUD();
+  showToast("0209 ACCEPTED — INFINITE LEVEL");
+}
+
+function runDevCommand(command) {
+  if (!player) return;
+
+  const message = $("devMessage");
+  switch (command.trim().toLowerCase()) {
+    case "heal":
+      player.health = player.maxHealth;
+      message.textContent = "Hull fully restored.";
+      break;
+    case "xp":
+      if (!infiniteLevel) gainXP(nextXP * 5);
+      message.textContent = "XP boost applied.";
+      break;
+    case "clear":
+      enemies = [];
+      enemyBullets = [];
+      message.textContent = "All enemies cleared.";
+      break;
+    case "invincible":
+      invincible = !invincible;
+      message.textContent = "Invincibility: " + invincible;
+      break;
+    case "score":
+      score += 5000;
+      message.textContent = "+5000 score.";
+      break;
+    case "wave":
+      wave++;
+      bossSpawned = false;
+      message.textContent = "Advanced to wave " + wave + ".";
+      break;
+    case "infinite":
+      activateInfiniteLevel();
+      message.textContent = "Infinite level mode activated.";
+      break;
+    default:
+      message.textContent =
+        "Unknown command. Try heal, xp, clear, invincible, score, wave, infinite.";
+      return;
+  }
+  updateHUD();
+}
+
+addEventListener("keydown", e => {
+  const key = e.key.toLowerCase();
+  keys[key] = true;
+
+  if ([" ", "arrowup", "arrowdown", "arrowleft", "arrowright"].includes(key)) {
+    e.preventDefault();
+  }
+
+  if ((key === "p" || key === "escape") &&
+      !["title", "gameover"].includes(state) &&
+      $("devPanel").classList.contains("hidden")) {
+    togglePause();
+    return;
+  }
+
+  if (key === "enter" && state === "title") {
+    startGame();
+    return;
+  }
+
+  if (key === " " && state === "title") {
+    startGame();
+    return;
+  }
+
+  // Type 0209 to unlock infinite level mode.
+  if (/^[0-9]$/.test(key) && state === "playing") {
+    digitBuffer += key;
+    digitBuffer = digitBuffer.slice(-4);
+    digitTimer = 2.5;
+
+    if (digitBuffer === "0209") {
+      activateInfiniteLevel();
+      digitBuffer = "";
+    }
+  }
+
+  // Open developer terminal with F2 after entering 0209.
+  if (key === "f2" && state !== "title" && state !== "gameover") {
+    e.preventDefault();
+    $("devPanel").classList.toggle("hidden");
+    if (!$("devPanel").classList.contains("hidden")) {
+      $("devInput").focus();
+    }
+  }
+});
+
+addEventListener("keyup", e => {
+  keys[e.key.toLowerCase()] = false;
+});
+
+canvas.addEventListener("mousemove", e => {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = e.clientX - rect.left;
+  mouse.y = e.clientY - rect.top;
+});
+
+canvas.addEventListener("mousedown", () => mouse.down = true);
+addEventListener("mouseup", () => mouse.down = false);
+canvas.addEventListener("contextmenu", e => e.preventDefault());
+
+$("devRunBtn").onclick = () => {
+  runDevCommand($("devInput").value);
+  $("devInput").value = "";
+};
+$("devInput").addEventListener("keydown", e => {
+  if (e.key === "Enter") $("devRunBtn").click();
+});
+$("devCloseBtn").onclick = () => $("devPanel").classList.add("hidden");
+
+$("startBtn").onclick = startGame;
+$("retryBtn").onclick = startGame;
+$("restartPauseBtn").onclick = startGame;
+$("resumeBtn").onclick = togglePause;
+
+$("titlePauseBtn").onclick = () => {
+  state = "title";
+  $("pauseScreen").classList.add("hidden");
+  $("hud").classList.add("hidden");
+  $("titleScreen").classList.remove("hidden");
+};
+
+$("titleOverBtn").onclick = () => {
+  state = "title";
+  $("gameOverScreen").classList.add("hidden");
+  $("hud").classList.add("hidden");
+  $("titleScreen").classList.remove("hidden");
+};
+
+// ==========================================
+// SPAWNING
+// ==========================================
+
+function spawnEnemy() {
+  if (enemies.length >= 12 + Math.min(wave, 8)) return;
+
+  const side = Math.floor(Math.random() * 4);
+  let x, y;
+
+  if (side === 0) { x = Math.random() * W; y = -30; }
+  if (side === 1) { x = W + 30; y = Math.random() * H; }
+  if (side === 2) { x = Math.random() * W; y = H + 30; }
+  if (side === 3) { x = -30; y = Math.random() * H; }
+
+  const roll = Math.random();
+  let type = "chaser";
+
+  if (wave >= 2 && roll > .72) type = "fast";
+  if (wave >= 3 && roll > .88) type = "tank";
+  if (wave >= 4 && roll > .94) type = "shooter";
+
+  const configs = {
+    chaser: { radius: 12, hp: 2 + wave * .2, speed: 65 + wave * 2, color: "#ff287f", value: 10 },
+    fast:   { radius: 9, hp: 1.5 + wave * .15, speed: 115 + wave * 2, color: "#ffb52e", value: 15 },
+    tank:   { radius: 19, hp: 7 + wave * .8, speed: 38 + wave, color: "#b45cff", value: 30 },
+    shooter:{ radius: 14, hp: 3 + wave * .3, speed: 45 + wave, color: "#ff554c", value: 25 }
+  };
+
+  const c = configs[type];
+  enemies.push({
+    x, y, type, radius: c.radius,
+    hp: c.hp, maxHp: c.hp,
+    speed: c.speed, color: c.color,
+    value: c.value, shootTimer: 1 + Math.random() * 2,
+    phase: Math.random() * 6
+  });
+}
+
+function spawnBoss() {
+  enemies.push({
+    x: W / 2,
+    y: -65,
+    type: "boss",
+    radius: 34,
+    hp: 80 + wave * 18,
+    maxHp: 80 + wave * 18,
+    speed: 38 + wave,
+    color: "#ff287f",
+    value: 300,
+    shootTimer: 1,
+    phase: 0
+  });
+  bossSpawned = true;
+  showToast("WARNING: VOID ENTITY DETECTED");
+}
+
+function spawnOrb(x, y, amount = 1) {
+  orbs.push({
+    x, y,
+    radius: 6,
+    amount,
+    life: 20,
+    phase: Math.random() * 6
+  });
+}
+
+function spawnWrench(x, y) {
+  wrenches.push({ x, y, radius: 12, life: 15, phase: 0 });
+}
+
+function burst(x, y, color, count = 8) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const s = Math.random() * 140 + 30;
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * s,
+      vy: Math.sin(a) * s,
+      life: .3 + Math.random() * .5,
+      maxLife: .8,
+      color,
+      size: Math.random() * 3 + 1
+    });
+  }
+}
+
+// ==========================================
+// COMBAT
+// ==========================================
+
+function shoot() {
+  if (player.fireTimer > 0) return;
+
+  player.fireTimer = .22 / upgrades.rate;
+
+  const angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+  player.angle = angle;
+
+  const count = infiniteLevel ? 5 : upgrades.multishot;
+  const spread = .14;
+
+  for (let i = 0; i < count; i++) {
+    const offset = (i - (count - 1) / 2) * spread;
+    const a = angle + offset;
+
+    bullets.push({
+      x: player.x + Math.cos(a) * 17,
+      y: player.y + Math.sin(a) * 17,
+      vx: Math.cos(a) * 600,
+      vy: Math.sin(a) * 600,
+      radius: 4,
+      damage: upgrades.damage * (infiniteLevel ? 5 : 1),
+      life: 1.2
+    });
+  }
+}
+
+function damagePlayer(amount) {
+  if (invincible || infiniteLevel || player.dashTime > 0) return;
+
+  player.health -= amount;
+  shake = 7;
+  burst(player.x, player.y, "#ff287f", 5);
+
+  if (player.health <= 0) {
+    player.health = 0;
+    updateHUD();
+    gameOver();
+  }
+}
+
+function killEnemy(index) {
+  const enemy = enemies[index];
+
+  burst(enemy.x, enemy.y, enemy.color, enemy.type === "boss" ? 28 : 10);
+  score += enemy.value;
+  kills++;
+
+  if (enemy.type === "boss") {
+    spawnOrb(enemy.x, enemy.y, 12);
+    spawnWrench(enemy.x, enemy.y);
+    showToast("VOID ENTITY DESTROYED");
+  } else {
+    spawnOrb(enemy.x, enemy.y, Math.random() < .3 ? 2 : 1);
+    if (Math.random() < .2) spawnWrench(enemy.x, enemy.y);
+  }
+
+  enemies.splice(index, 1);
+  updateHUD();
+}
+
+// ==========================================
+// UPDATE
+// ==========================================
+
+function update(dt) {
+  if (state !== "playing") return;
+
+  elapsed += dt;
+  dashCooldown = Math.max(0, dashCooldown - dt);
+  player.fireTimer = Math.max(0, player.fireTimer - dt);
+  player.dashTime = Math.max(0, player.dashTime - dt);
+  digitTimer = Math.max(0, digitTimer - dt);
+  if (digitTimer === 0) digitBuffer = "";
+  shake = Math.max(0, shake - dt * 20);
+  toastTimer = Math.max(0, toastTimer - dt);
+  if (toastTimer === 0) $("toast").textContent = "";
+
+  let mx = 0, my = 0;
+  if (keys["w"] || keys["arrowup"]) my--;
+  if (keys["s"] || keys["arrowdown"]) my++;
+  if (keys["a"] || keys["arrowleft"]) mx--;
+  if (keys["d"] || keys["arrowright"]) mx++;
+
+  const length = Math.hypot(mx, my) || 1;
+  const speed = player.speed * upgrades.speed *
+    (player.dashTime > 0 ? 3.2 : 1);
+
+  player.x += mx / length * speed * dt;
+  player.y += my / length * speed * dt;
+  player.x = Math.max(player.radius, Math.min(W - player.radius, player.x));
+  player.y = Math.max(player.radius, Math.min(H - player.radius, player.y));
+
+  player.angle = Math.atan2(mouse.y - player.y, mouse.x - player.x);
+
+  if ((keys["shift"] || keys["shiftleft"] || keys["shiftright"]) &&
+      dashCooldown <= 0) {
+    player.dashTime = .18;
+    dashCooldown = 1.2 / upgrades.dash;
+    burst(player.x, player.y, "#00f6ff", 8);
+  }
+
+  if (mouse.down || keys[" "]) shoot();
+
+  // Waves get harder slowly.
+  spawnTimer -= dt;
+  if (spawnTimer <= 0) {
+    spawnEnemy();
+    spawnTimer = Math.max(.5, 1.6 - wave * .045) *
+      (.85 + Math.random() * .45);
+  }
+
+  // Boss every fifth wave.
+  if (wave % 5 === 0 && !bossSpawned) spawnBoss();
+
+  bullets.forEach(b => {
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.life -= dt;
+  });
+  bullets = bullets.filter(b =>
+    b.life > 0 && b.x > -30 && b.x < W + 30 &&
+    b.y > -30 && b.y < H + 30
+  );
+
+  enemyBullets.forEach(b => {
+    b.x += b.vx * dt;
+    b.y += b.vy * dt;
+    b.life -= dt;
+    if (Math.hypot(b.x - player.x, b.y - player.y) <
+        b.radius + player.radius) {
+      damagePlayer(b.damage);
+      b.life = 0;
+    }
+  });
+  enemyBullets = enemyBullets.filter(b => b.life > 0);
+
+  for (let i = enemies.length - 1; i >= 0; i--) {
+    const e = enemies[i];
+    const a = Math.atan2(player.y - e.y, player.x - e.x);
+
+    e.phase += dt;
+
+    let moveAngle = a;
+    if (e.type === "fast") moveAngle += Math.sin(e.phase * 5) * .3;
+    if (e.type === "shooter" && Math.hypot(player.x-e.x,player.y-e.y)<260) {
+      moveAngle += Math.PI;
+    }
+
+    e.x += Math.cos(moveAngle) * e.speed * dt;
+    e.y += Math.sin(moveAngle) * e.speed * dt;
+
+    if (e.type === "shooter" || e.type === "boss") {
+      e.shootTimer -= dt;
+      if (e.shootTimer <= 0) {
+        e.shootTimer = e.type === "boss" ? .75 : 1.9;
+        const count = e.type === "boss" ? 7 : 1;
+
+        for (let j = 0; j < count; j++) {
+          const aa = a + (j - (count - 1) / 2) * .22;
+          const sp = e.type === "boss" ? 190 : 160;
+          enemyBullets.push({
+            x: e.x, y: e.y,
+            vx: Math.cos(aa) * sp,
+            vy: Math.sin(aa) * sp,
+            radius: e.type === "boss" ? 5 : 4,
+            damage: e.type === "boss" ? 14 : 8,
+            life: 4
+          });
+        }
+      }
+    }
+
+    if (Math.hypot(e.x-player.x, e.y-player.y) <
+        e.radius + player.radius) {
+      damagePlayer(e.type === "boss" ? 22 : 12);
+    }
+
+    for (let j = bullets.length - 1; j >= 0; j--) {
+      const b = bullets[j];
+      if (Math.hypot(e.x-b.x, e.y-b.y) < e.radius + b.radius) {
+        e.hp -= b.damage;
+        b.life = 0;
+        burst(b.x, b.y, e.color, 2);
+
+        if (e.hp <= 0) {
+          killEnemy(i);
+          break;
+        }
+      }
+    }
+  }
+
+  bullets = bullets.filter(b => b.life > 0);
+
+  for (let i = orbs.length - 1; i >= 0; i--) {
+    const o = orbs[i];
+    o.life -= dt;
+    o.phase += dt * 3;
+
+    const dist = Math.hypot(player.x-o.x, player.y-o.y);
+    const magnet = 115 * upgrades.pickup;
+
+    if (dist < magnet && dist > 0) {
+      o.x += (player.x-o.x) / dist * 300 * dt;
+      o.y += (player.y-o.y) / dist * 300 * dt;
+    }
+
+    if (dist < player.radius + o.radius + 5) {
+      gainXP(o.amount);
+      orbs.splice(i, 1);
+    } else if (o.life <= 0) {
+      orbs.splice(i, 1);
+    }
+  }
+
+  for (let i = wrenches.length - 1; i >= 0; i--) {
+    const w = wrenches[i];
+    w.life -= dt;
+    w.phase += dt * 3;
+
+    if (Math.hypot(player.x-w.x, player.y-w.y) <
+        player.radius + w.radius + 5) {
+      player.health = Math.min(player.maxHealth, player.health + 18);
+      showToast("+18 HULL REPAIRED");
+      burst(w.x, w.y, "#67ff9a", 8);
+      wrenches.splice(i, 1);
+    } else if (w.life <= 0) {
+      wrenches.splice(i, 1);
+    }
+  }
+
+  particles.forEach(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    p.vx *= .98;
+    p.vy *= .98;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  // Advance waves when the field is clear.
+  if (enemies.length === 0 && kills > 0 && elapsed > 8) {
+    wave++;
+    bossSpawned = false;
+    showToast("WAVE " + wave);
+    elapsed = 0;
+  }
+
+  updateHUD();
+}
+
+// ==========================================
+// DRAWING
+// ==========================================
+
+function drawBackground() {
+  ctx.fillStyle = "#050711";
+  ctx.fillRect(0, 0, W, H);
+
+  stars.forEach(s => {
+    ctx.globalAlpha = s.alpha;
+    ctx.fillStyle = "#9defff";
+    ctx.fillRect(s.x, s.y, s.size, s.size);
+  });
+  ctx.globalAlpha = 1;
+
+  ctx.strokeStyle = "#123048";
+  ctx.lineWidth = 1;
+  const grid = 55;
+  for (let x = 0; x < W; x += grid) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += grid) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+}
+
+function drawPlayer() {
+  if (!player) return;
+
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.rotate(player.angle);
+
+  if (player.dashTime > 0) {
+    ctx.shadowBlur = 25;
+    ctx.shadowColor = "#00f6ff";
+  } else {
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = "#00f6ff";
+  }
+
+  ctx.fillStyle = "#00f6ff";
+  ctx.strokeStyle = "#c7ffff";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(19, 0);
+  ctx.lineTo(-11, -11);
+  ctx.lineTo(-6, 0);
+  ctx.lineTo(-11, 11);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(-2, -3, 9, 6);
+  ctx.restore();
+
+  ctx.shadowBlur = 0;
+}
+
+function drawEnemies() {
+  enemies.forEach(e => {
+    ctx.save();
+    ctx.translate(e.x, e.y);
+    ctx.shadowBlur = e.type === "boss" ? 28 : 12;
+    ctx.shadowColor = e.color;
+    ctx.fillStyle = e.color;
+    ctx.strokeStyle = "#ffffffaa";
+    ctx.lineWidth = e.type === "boss" ? 3 : 1.5;
+
+    if (e.type === "boss") {
+      ctx.rotate(elapsed);
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = i * Math.PI / 4;
+        const r = i % 2 === 0 ? e.radius : e.radius * .7;
+        const x = Math.cos(a) * r;
+        const y = Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.beginPath();
+      ctx.arc(0, 0, e.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#fff";
+    ctx.beginPath();
+    ctx.arc(-e.radius*.3, -e.radius*.15, 2.5, 0, Math.PI*2);
+    ctx.arc(e.radius*.3, -e.radius*.15, 2.5, 0, Math.PI*2);
+    ctx.fill();
+
+    const bw = e.radius * 2;
+    ctx.fillStyle = "#24101f";
+    ctx.fillRect(-bw/2, -e.radius-10, bw, 4);
+    ctx.fillStyle = "#ff446e";
+    ctx.fillRect(-bw/2, -e.radius-10, bw*Math.max(0,e.hp/e.maxHp), 4);
+    ctx.restore();
+  });
+}
+
+function drawObjects() {
+  bullets.forEach(b => {
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "#00f6ff";
+    ctx.fillStyle = "#bfffff";
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2);
+    ctx.fill();
+  });
+
+  enemyBullets.forEach(b => {
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "#ff287f";
+    ctx.fillStyle = "#ff287f";
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.radius, 0, Math.PI*2);
+    ctx.fill();
+  });
+  ctx.shadowBlur = 0;
+
+  orbs.forEach(o => {
+    ctx.save();
+    ctx.shadowBlur = 16;
+    ctx.shadowColor = "#00f6ff";
+    ctx.fillStyle = "#00f6ff";
+    ctx.beginPath();
+    ctx.arc(o.x, o.y, o.radius + Math.sin(o.phase)*1.5, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  });
+
+  wrenches.forEach(w => {
+    ctx.save();
+    ctx.translate(w.x, w.y);
+    ctx.rotate(Math.sin(w.phase)*.25);
+    ctx.font = "23px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = "#67ff9a";
+    ctx.fillText("🔧", 0, 0);
+    ctx.restore();
+  });
+
+  particles.forEach(p => {
+    ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+function draw() {
+  ctx.save();
+
+  if (shake > 0) {
+    ctx.translate(
+      (Math.random()-.5)*shake,
+      (Math.random()-.5)*shake
+    );
+  }
+
+  drawBackground();
+  drawObjects();
+  drawEnemies();
+  drawPlayer();
+
+  ctx.restore();
+}
+
+function loop(now) {
+  if (state === "title" || state === "gameover") {
+    draw();
+    return;
+  }
+
+  const dt = Math.min((now - lastTime) / 1000 || 0, .035);
+  lastTime = now;
+
+  if (state === "playing") update(dt);
+  draw();
+
+  requestAnimationFrame(loop);
+}
+
+// Keep the animated background visible on the title screen.
+function titleLoop() {
+  if (state === "title") {
+    drawBackground();
+    requestAnimationFrame(titleLoop);
+  }
+}
+titleLoop();
+</script>
+</body>
+</html>
